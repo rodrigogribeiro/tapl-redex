@@ -31,7 +31,7 @@
    #:codomain e
 
    (--> ((lam x t e_1) v_2)
-        (substitute e_1 x e_2)
+        (substitute e_1 x v_2)
         "Beta")))
 
 
@@ -86,8 +86,48 @@
 
 ;; testing soundness.
 
+(define (types? g e)
+  (not (null? (judgment-holds (type-of ,g ,e t)
+                              t))))
+
+(define (reduces? e)
+  (not (null? (apply-reduction-relation
+               ->             (term (,e))))))
+
+
+; progress property
+
+(define (v? e)
+  (redex-match? STLCL v))
+
+(define (progress-holds? g e)
+  (if (types? g e)
+      (or (v? e)
+          (reduces? e))
+      #t))
+
+
 (redex-check
    STLC-Ty-CtxL
    #:satisfying (type-of nil e t)
-   (redex-match? STLC-Ty-CtxL e (term (eval e)))
-   #:attempts 1000)
+   (progress-holds? (term nil) (term e))
+   #:attempts 100)
+
+; preservation
+
+(define (preservation-holds? g e)
+  (define types1 (judgment-holds (type-of ,g ,e t) t))
+  (unless (null? types1)
+    (unless (= 1 (length types1)) (error 'preservation "multiple types! ~s" e)))
+  (cond
+    [(null? types1) #t]
+    [else
+     (for/and ([v (apply-reduction-relation* ->v e)])
+       (equal? (judgment-holds (type-of ,g ,v t) t)
+               types1))]))
+
+(redex-check
+   STLC-Ty-CtxL
+   #:satisfying (type-of nil e t)
+   (preservation-holds? (term nil) (term e))
+   #:attempts 100)
