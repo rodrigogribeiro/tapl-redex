@@ -6,7 +6,7 @@
 
 ;; syntax for the simply typed lambda calculus
 
-(define-language STLCL
+(define-language STLC
   (e ::= x
          (e e)
          (lam x t e)
@@ -16,19 +16,26 @@
          (lam x t e))
   (t ::= (-> t t)
          nat)
+  (E ::= hole
+         (v E)
+         (E e))
   #:binding-forms
   (lam x t e #:refers-to x))
 
-;; semantics definitions
 
-(define-extended-language STLC-CtxL STLCL
-  (E ::= hole
-         (v E)
-         (E e)))
+;; syntax extension for unit
 
-(define ->
+(define-extended-language STLC-Unit STLC
+  (e ::= ....
+         unit)
+  (v ::= ....
+         unit)
+  (t ::= ....
+         unit))
+
+(define ->e
   (reduction-relation
-   STLCL
+   STLC-Unit
    #:domain e
    #:codomain e
 
@@ -36,36 +43,33 @@
         (substitute e_1 x v_2)
         "Beta")))
 
+(define ->e* (context-closure ->e STLC-Unit E))
+(define ->ev (compatible-closure ->e STLC-Unit e))
 
-(define ->* (context-closure -> STLC-CtxL E))
-(define ->v (compatible-closure -> STLC-CtxL e))
-
-
-(define-metafunction STLCL
+(define-metafunction STLC-Unit
   eval : e -> e
   [(eval e)
-   ,(car (apply-reduction-relation* ->* (term e)))])
+   ,(car (apply-reduction-relation* ->e* (term e)))])  
 
-(define-metafunction STLC-CtxL
-  normalize : e -> v
-  [(normalize e)
-   ,(car (apply-reduction-relation* ->v (term e)))])
+;; type system
 
-;; typing judgment
-
-(define-extended-language STLC-Ty-CtxL STLCL
+(define-extended-language STLC-Unit-Ctx STLC-Unit
   (G ::= nil
          (G (x : t))))
 
-(define-metafunction STLCL
+(define-metafunction STLC-Unit
   different : x x -> boolean
   [(different x x) #f]
   [(different x y) #t])
 
-(define-judgment-form STLC-Ty-CtxL
+(define-judgment-form STLC-Unit-Ctx
   #:contract (type-of G e t)
   #:mode (type-of I I O)
-  
+
+  [--------------------------"T-Unit"
+   (type-of G unit unit)]
+
+    
   [--------------------------"T-Nat"
      (type-of G natural nat)]
 
@@ -78,13 +82,14 @@
    (type-of (G (y : t_1)) x t)]
 
   [(type-of (G (x : t_1)) e t_2)
-   ---------------------------------"T-Lam"
+   --------------------------------------"T-Lam"
    (type-of G (lam x t_1 e) (-> t_1 t_2))]
 
   [(type-of G e_1 (-> t_1 t_2))
    (type-of G e_2 t_1)
    ---------------------------------"T-App"
    (type-of G (e_1 e_2) t_2)])
+
 
 ;; testing soundness.
 
@@ -94,13 +99,13 @@
 
 (define (reduces? e)
   (not (null? (apply-reduction-relation
-               ->             (term (,e))))))
+               ->e              (term (,e))))))
 
 
 ; progress property
 
 (define (v? e)
-  (redex-match? STLCL v))
+  (redex-match? STLC-Unit-Ctx v))
 
 (define (progress-holds? g e)
   (if (types? g e)
@@ -110,7 +115,7 @@
 
 
 (redex-check
-   STLC-Ty-CtxL
+   STLC-Unit-Ctx
    #:satisfying (type-of nil e t)
    (progress-holds? (term nil) (term e))
    #:attempts 100)
@@ -124,12 +129,12 @@
   (cond
     [(null? types1) #t]
     [else
-     (for/and ([v (apply-reduction-relation* ->v e)])
+     (for/and ([v (apply-reduction-relation* ->e* e)])
        (equal? (judgment-holds (type-of ,g ,v t) t)
                types1))]))
 
 (redex-check
-   STLC-Ty-CtxL
+   STLC-Unit-Ctx
    #:satisfying (type-of nil e t)
    (preservation-holds? (term nil) (term e))
    #:attempts 100)
